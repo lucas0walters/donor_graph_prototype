@@ -47,15 +47,20 @@ class DonorGraphBuilder:
         self.log.append(f"Graph created and returned with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
         return G
 
-    def graph_to_vectors(self, graph, dimensions=64, walk_length=30, num_walks=200, workers=1):
+    def graph_to_vectors(self, graph, dimensions=64, walk_length=15, num_walks=30, workers=7):
         node2vec = Node2Vec(graph, dimensions=dimensions, walk_length=walk_length, num_walks=num_walks, workers=workers)
         model = node2vec.fit(window=10, min_count=1)
-        vectors = {str(node): model.wv[str(node)] for node in graph.nodes()}
+        vectors = pd.DataFrame(
+            [model.wv[str(node)] for node in graph.nodes()],
+            index=[str(node) for node in graph.nodes()]
+        )
         self.log.append(f"Node2Vec vectors generated for {len(vectors)} nodes.")
         return vectors
 
 if __name__ == "__main__":
     builder = DonorGraphBuilder("onemonthslice.txt")
-    graph = builder.build_graph()
-    vectors = builder.graph_to_vectors(graph)
+    graph = builder.build_graph() # ADJUST WORKER THREADS ACCORDING TO YOUR SYSTEM!
     print(builder)
+#debugging output
+#    print([str(node) for node, data in list(graph.nodes(data=True)) if data.get('bipartite') == 1][:100])
+    vectors = builder.graph_to_vectors(graph)
