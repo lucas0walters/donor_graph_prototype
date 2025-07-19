@@ -1,6 +1,6 @@
 import pandas as pd
 import networkx as nx
-import pickle
+from node2vec import Node2Vec
 
 # Load the tab-separated campaign finance data
 # This program works with as a prototype using a one-month slice of data of donation data to Florida candidates
@@ -47,7 +47,15 @@ class DonorGraphBuilder:
         self.log.append(f"Graph created and returned with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
         return G
 
+    def graph_to_vectors(self, graph, dimensions=64, walk_length=30, num_walks=200, workers=1):
+        node2vec = Node2Vec(graph, dimensions=dimensions, walk_length=walk_length, num_walks=num_walks, workers=workers)
+        model = node2vec.fit(window=10, min_count=1)
+        vectors = {str(node): model.wv[str(node)] for node in graph.nodes()}
+        self.log.append(f"Node2Vec vectors generated for {len(vectors)} nodes.")
+        return vectors
+
 if __name__ == "__main__":
     builder = DonorGraphBuilder("onemonthslice.txt")
     graph = builder.build_graph()
+    vectors = builder.graph_to_vectors(graph)
     print(builder)
