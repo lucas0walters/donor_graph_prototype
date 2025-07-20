@@ -3,6 +3,7 @@ import networkx as nx
 from node2vec import Node2Vec
 import faiss
 from sklearn.preprocessing import normalize
+import numpy as np
 
 # Load the tab-separated campaign finance data
 # This program works with as a prototype using a one-month slice of data of donation data to Florida candidates
@@ -66,7 +67,7 @@ class DonorGraphBuilder:
         self.log(f"Node2Vec vectors generated for {len(vectors)} nodes.")
         return vectors
     
-    def cosine_clustering(self, vectors):
+    def cosine_clustering(self, vectors, k=10):
         self.log("Normalizing vectors for cosine similarity...")
         normalized_vectors = normalize(vectors, axis=1)
 
@@ -75,14 +76,44 @@ class DonorGraphBuilder:
         index.add(normalized_vectors.astype('float32'))
 
         self.log("Clustering vectors using FAISS...")
-        distances, indices = index.search(normalized_vectors.astype('float32'), k=10)
+        distances, indices = index.search(normalized_vectors.astype('float32'), k)
+        self.log("Clustering completed.")
         return distances, indices
+    
+    def recommend_by_name(self, graph, vectors, distances, clusters, name):
+        # Identify donor nodes using bipartite attribute
+        donor_nodes = [node for node, data in graph.nodes(data=True) if data.get('bipartite') == 0]
+
+        # Find all donor indices where the donor name contains the search string (case-insensitive)
+        matches = [i for i, node in enumerate(vectors.index) if name.lower() in node.lower() and node in donor_nodes]
+        if not matches:
+            self.log(f"No donor nodes containing '{name}' found in the graph.")
+            return None
+
+        recommendations = []
+        for idx in matches:
+            recommended_indices = clusters[idx]
+            similarity_scores = distances[idx]
+            # Filter recommendations to only include donor nodes
+            recommended_names = [vectors.index[i] for i in recommended_indices if vectors.index[i] in donor_nodes]
+            recommended_scores = [similarity_scores[j] for j, i in enumerate(recommended_indices) if vectors.index[i] in donor_nodes]
+            for rec_name, score in zip(recommended_names, recommended_scores):
+                recommendations.append({'searched_name': vectors.index[idx], 'name': rec_name, 'similarity_score': score})
+
+        recommendations_df = pd.DataFrame(recommendations)
+        self.log(f"Donor recommendations for nodes containing '{name}' retrieved.")
+        return recommendations_df
 
 if __name__ == "__main__":
+    # Load previously exported vectors, clusters, and distances
+    vectors = pd.read_csv("vectors_output.csv", index_col=0)
+    clusters = np.loadtxt("clusters_output.csv", delimiter=",", dtype=int)
+    distances = np.loadtxt("distances_output.csv", delimiter=",")
+
+    # Rebuild graph for donor node identification
     builder = DonorGraphBuilder("onemonthslice.txt")
-    graph = builder.build_graph() # ADJUST WORKER THREADS ACCORDING TO YOUR SYSTEM! -1 + (number of logical processors)
-    vectors = builder.graph_to_vectors(graph)
-    print(vectors.head())
-    distances, clusters = builder.cosine_clustering(vectors)
-    # pd.DataFrame(clusters).to_csv("clusters_output.csv", index=False)
-    # print("Clusters exported to clusters_output.csv")
+    graph = builder.build_graph()
+
+    # Test recommendation functionality using loaded data
+    recommendations = builder.recommend_by_name(graph, vectors, distances, clusters, 'CHAMBER OF COMMERCE')
+    print(recommendations)
