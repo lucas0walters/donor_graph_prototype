@@ -1,6 +1,8 @@
 import pandas as pd
 import networkx as nx
 from node2vec import Node2Vec
+import faiss
+from sklearn.preprocessing import normalize
 
 # Load the tab-separated campaign finance data
 # This program works with as a prototype using a one-month slice of data of donation data to Florida candidates
@@ -63,10 +65,24 @@ class DonorGraphBuilder:
         )
         self.log(f"Node2Vec vectors generated for {len(vectors)} nodes.")
         return vectors
+    
+    def cosine_clustering(self, vectors):
+        self.log("Normalizing vectors for cosine similarity...")
+        normalized_vectors = normalize(vectors, axis=1)
+
+        self.log("Building FAISS index for clustering...")
+        index = faiss.IndexFlatIP(normalized_vectors.shape[1])
+        index.add(normalized_vectors.astype('float32'))
+
+        self.log("Clustering vectors using FAISS...")
+        distances, indices = index.search(normalized_vectors.astype('float32'), k=10)
+        return distances, indices
 
 if __name__ == "__main__":
     builder = DonorGraphBuilder("onemonthslice.txt")
-    graph = builder.build_graph() # ADJUST WORKER THREADS ACCORDING TO YOUR SYSTEM!
-    print(builder)
+    graph = builder.build_graph() # ADJUST WORKER THREADS ACCORDING TO YOUR SYSTEM! -1 + (number of logical processors)
     vectors = builder.graph_to_vectors(graph)
     print(vectors.head())
+    distances, clusters = builder.cosine_clustering(vectors)
+    # pd.DataFrame(clusters).to_csv("clusters_output.csv", index=False)
+    # print("Clusters exported to clusters_output.csv")
