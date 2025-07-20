@@ -4,6 +4,7 @@ from node2vec import Node2Vec
 import faiss
 from sklearn.preprocessing import normalize
 import numpy as np
+import argparse
 
 # Load the tab-separated campaign finance data
 # This program works with as a prototype using a one-month slice of data of donation data to Florida candidates
@@ -105,15 +106,33 @@ class DonorGraphBuilder:
         return recommendations_df
 
 if __name__ == "__main__":
-    # Load previously exported vectors, clusters, and distances
-    vectors = pd.read_csv("vectors_output.csv", index_col=0)
-    clusters = np.loadtxt("clusters_output.csv", delimiter=",", dtype=int)
-    distances = np.loadtxt("distances_output.csv", delimiter=",")
+    parser = argparse.ArgumentParser(description="Donor graph builder and recommender")
+    parser.add_argument('--mode', choices=['build', 'load'], required=True, help="Mode: 'build' to process raw data from scratch, 'load' to use previous outputs")
+    parser.add_argument('--data', type=str, default="onemonthslice.txt", help="Input data file for build mode. Default is 'onemonthslice.txt'.")
+    parser.add_argument('--vectors', type=str, default="vectors_output.csv", help="Vectors file for load mode. Default is 'vectors_output.csv'.")
+    parser.add_argument('--clusters', type=str, default="clusters_output.csv", help="Clusters file for load mode. Default is 'clusters_output.csv'.")
+    parser.add_argument('--distances', type=str, default="distances_output.csv", help="Distances file for load mode. Default is 'distances_output.csv'.")
+    parser.add_argument('--search', type=str, default="HONEST LEADERSHIP", help="Search string for recommendations. Default is 'HONEST LEADERSHIP'.")
+    parser.add_argument('--threads', type=int, default=7, help="Number of worker threads for Node2Vec. Should match your logical processors -1. Default is 7.")
+    args = parser.parse_args()
 
-    # Rebuild graph for donor node identification
-    builder = DonorGraphBuilder("onemonthslice.txt")
-    graph = builder.build_graph()
+    if args.mode == 'build':
+        builder = DonorGraphBuilder(args.data)
+        graph = builder.build_graph()
+        vectors = builder.graph_to_vectors(graph, workers=args.threads)
+        distances, clusters = builder.cosine_clustering(vectors)
+        vectors.to_csv(args.vectors)
+        np.savetxt(args.clusters, clusters, delimiter=",", fmt="%d")
+        np.savetxt(args.distances, distances, delimiter=",")
+        print("Graph, vectors, clusters, and distances exported.")
+    elif args.mode == 'load':
+        vectors = pd.read_csv(args.vectors, index_col=0)
+        clusters = np.loadtxt(args.clusters, delimiter=",", dtype=int)
+        distances = np.loadtxt(args.distances, delimiter=",")
+        builder = DonorGraphBuilder(args.data)
+        graph = builder.build_graph()
+    else:
+        raise ValueError("Invalid mode selected.")
 
-    # Test recommendation functionality using loaded data
-    recommendations = builder.recommend_by_name(graph, vectors, distances, clusters, 'CHAMBER OF COMMERCE')
+    recommendations = builder.recommend_by_name(graph, vectors, distances, clusters, args.search)
     print(recommendations)
