@@ -6,8 +6,6 @@ from sklearn.preprocessing import normalize
 import numpy as np
 import argparse
 
-# Load the tab-separated campaign finance data
-# This program works with as a prototype using a one-month slice of data of donation data to Florida candidates
 class DonorGraphBuilder:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -38,7 +36,6 @@ class DonorGraphBuilder:
         self.log("Creating bipartite graph...")
         G = nx.Graph()
 
-        # Add nodes with bipartite attribute
         contributors = set(grouped['Contributor'])
         recipients = set(grouped['Recipient'])
         G.add_nodes_from(contributors, bipartite=0)
@@ -82,10 +79,8 @@ class DonorGraphBuilder:
         return distances, indices
     
     def recommend_by_name(self, graph, vectors, distances, clusters, name):
-        # Identify donor nodes using bipartite attribute
         donor_nodes = [node for node, data in graph.nodes(data=True) if data.get('bipartite') == 0]
 
-        # Find all donor indices where the donor name contains the search string (case-insensitive)
         matches = [i for i, node in enumerate(vectors.index) if name.lower() in node.lower() and node in donor_nodes]
         if not matches:
             self.log(f"No donor nodes containing '{name}' found in the graph.")
@@ -95,7 +90,6 @@ class DonorGraphBuilder:
         for idx in matches:
             recommended_indices = clusters[idx]
             similarity_scores = distances[idx]
-            # Filter recommendations to only include donor nodes
             recommended_names = [vectors.index[i] for i in recommended_indices if vectors.index[i] in donor_nodes]
             recommended_scores = [similarity_scores[j] for j, i in enumerate(recommended_indices) if vectors.index[i] in donor_nodes]
             for rec_name, score in zip(recommended_names, recommended_scores):
